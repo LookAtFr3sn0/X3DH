@@ -15,7 +15,7 @@
     "/dist"
   ],
   "dependencies": {
-    "libsodium-wrappers": "^0.7.15",
+    "sodium-native": "^5.0.3",
     "typescript": "^5.8.3",
     "undici-types": "^7.9.0"
   },
