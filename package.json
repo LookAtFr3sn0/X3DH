@@ -1,6 +1,6 @@
 {
   "name": "@lookatfr3sn0/x3dh",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Extended Triple Diffie-Hellman",
   "type": "module",
   "main": "dist/index.js",

@@ -1,5 +1,6 @@
 import pkg from 'sodium-plus';
 const { SodiumPlus, CryptographyKey } = pkg;
+import { createHmac } from 'crypto';
 
 let sodium;
 
@@ -102,6 +103,27 @@ export class X3DH {
     );
     if (!plaintext) throw new Error('Decryption failed');
     return plaintext.toString('utf8');
+  }
+
+  /**
+   * HMAC-based Extract-and-Expand Key Derivation Function (RFC 5869)
+   * @param {Uint8Array} ikm - Input keying material
+   * @param {Uint8Array} [salt] - Optional salt (defaults to zero)
+   * @returns {Promise<Uint8Array>}
+   */
+  public async hkdf(ikm: Uint8Array, salt?: Uint8Array): Promise<Uint8Array> {
+    const sodium = await this.initSodium();
+    // Determine hash output length and default salt
+    const hashLen = this.hash === 'sha512' ? 64 : 32;
+    if (!salt) salt = Buffer.alloc(hashLen);
+    
+    const prk = createHmac(this.hash, salt).update(Buffer.from(ikm)).digest();
+
+    const infoBuf = Buffer.from(this.info, 'utf8');
+    const okm = createHmac(this.hash, prk)
+      .update(Buffer.concat([Buffer.alloc(0), infoBuf, Buffer.from([1])]))
+      .digest();
+    return okm;
   }
 
   public getCurve(): 'x25519' | 'x448'   { return this.curve;  }
