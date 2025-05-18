@@ -26,7 +26,7 @@ export class X3DH {
    * Encrypts a message using XChaCha20-Poly1305
    * @param {string} message - The message to encrypt
    * @param {Uint8Array} key - The key to use for encryption
-   * @param {string} associatedData - Optional associated data for the encryption
+   * @param {string} [associatedData] - Optional associated data
    * @returns {string}
    */
   public async encrypt(message: string, key: Uint8Array, associatedData?: string): Promise<string> {
