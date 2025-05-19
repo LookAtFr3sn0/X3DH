@@ -216,6 +216,83 @@ export class X3DH {
     return { signature: Buffer.from(signature).toString('base64'), preKeys }
   }
 
+  /**
+   * Verify a signed key ring
+   * @param {Uint8Array} publicKey - The public key to verify against
+   * @param {Uint8Array} signature - The signature to verify
+   * @param {Array<Uint8Array>} keyRing - The key ring to verify
+   * @returns {Promise<boolean>}
+   */
+  public async verifyKeyRing(publicKey: Uint8Array, signature: Uint8Array, keyRing: Array<Uint8Array>): Promise<boolean> {
+    const sodium = await this.initSodium();
+
+    return sodium.crypto_sign_verify_detached(
+      await this.hashPublicKeys(keyRing),
+      Buffer.from(publicKey),
+      Buffer.from(signature)
+    )
+  }
+
+  /**
+   * Begin a handshake with a remote party.
+   * @param {Uint8Array} identityKey - The public key of the remote party
+   * @param {Object} signedPreKey - The signed prekey from the local party
+   * @param {Uint8Array} signedPreKey.signature - The signature of the signed prekey
+   * @param {Uint8Array} signedPreKey.preKey - The prekey to use for the handshake
+   * @param {Uint8Array} [oneTimeKey] - The recipient's one-time prekey
+   * @param {Uint8Array} senderKey - The sender's private key
+   * @throws {Error} If the signature verification fails
+   * @returns {Promise<{ IK: Uint8Array, EK: Uint8Array, SK: Uint8Array, OTK?: Uint8Array }>}
+   */
+  public async handshakeBegin(
+    identityKey: Uint8Array,
+    signedPreKey: { signature: Uint8Array, preKey: Uint8Array },
+    senderKey: Uint8Array,
+    oneTimeKey?: Uint8Array
+  ) {
+    const sodium = await this.initSodium();
+    const identity = new X25519PublicKey(Buffer.from(identityKey));
+    const signature = Buffer.from(signedPreKey.signature);
+    const prekey = new X25519PublicKey(Buffer.from(signedPreKey.preKey));
+
+    if (!(await this.verifyKeyRing(identityKey, signature, [prekey.getBuffer()]))) {
+      throw new Error('Signature verification failed for the signed prekey');
+    }
+
+    const ephemeralKeyPair = await this.generateKeyPair(this.curve);
+    const ephemeralPublicKey = ephemeralKeyPair.publicKey;
+    const ephemeralPrivateKey = ephemeralKeyPair.privateKey;
+
+    const DH1 = await sodium.crypto_scalarmult(senderKey, prekey)
+    const DH2 = await sodium.crypto_scalarmult(ephemeralPrivateKey, identity);
+    const DH3 = await sodium.crypto_scalarmult(ephemeralPrivateKey, prekey);
+    
+    let SK = Buffer.concat([DH1, DH2, DH3]);
+    if (oneTimeKey) {
+      const DH4 = await sodium.crypto_scalarmult(
+        ephemeralPrivateKey,
+        new X25519PublicKey(Buffer.from(oneTimeKey))
+      );
+
+      SK = Buffer.concat([SK, DH4]);
+      DH4.wipe();
+    }
+    SK = Buffer.from(await this.hkdf(SK));
+    
+    DH1.wipe();
+    DH2.wipe();
+    DH3.wipe();
+    ephemeralPrivateKey.wipe();
+    await sodium.sodium_memzero(senderKey.buffer);
+
+    return {
+      IK: identity.getBuffer(),
+      EK: ephemeralPublicKey.getBuffer(),
+      SK: SK,
+      OTK: oneTimeKey ? Buffer.from(oneTimeKey) : null,
+    }
+    
+  }
 
   public getCurve(): 'x25519'            { return this.curve; }
   public getHash():  'sha256' | 'sha512' { return this.hash;  }
