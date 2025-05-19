@@ -37,5 +37,39 @@ describe('X3DH', () => {
     await expect(x3dh.decrypt(encrypted, wrongKey)).rejects.toThrow('Commitment mismatch');
   });
 
-  it('should ')
+  it('should produce different ciphertexts for different keys', async () => {
+    const key1 = crypto.getRandomValues(new Uint8Array(32));
+    const key2 = crypto.getRandomValues(new Uint8Array(32));
+    const message = 'Test message';
+
+    const encrypted1 = await x3dh.encrypt(message, key1);
+    const encrypted2 = await x3dh.encrypt(message, key2);
+    expect(encrypted1).not.toBe(encrypted2);
+  });
+
+  it('should produce different ciphertexts for same key and message', async () => {
+    const key = crypto.getRandomValues(new Uint8Array(32));
+    const message = 'Repeatable message';
+
+    const encrypted1 = await x3dh.encrypt(message, key);
+    const encrypted2 = await x3dh.encrypt(message, key);
+    expect(encrypted1).not.toBe(encrypted2);
+  });
+
+  it('should generate unique key pairs', async () => {
+    const keyPair1 = await x3dh.generateKeyPair();
+    const keyPair2 = await x3dh.generateKeyPair();
+    expect(keyPair1.publicKey).not.toEqual(keyPair2.publicKey);
+    expect(keyPair1.privateKey).not.toEqual(keyPair2.privateKey);
+  });
+
+  it('should encrypt and decrypt an empty string', async () => {
+    const key = crypto.getRandomValues(new Uint8Array(32));
+    const message = '';
+    const encrypted = await x3dh.encrypt(message, key);
+    const decrypted = await x3dh.decrypt(encrypted, key);
+    expect(decrypted).toBe(message);
+  });
+
+  
 });
