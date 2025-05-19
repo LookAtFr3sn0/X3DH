@@ -34,6 +34,3 @@ MIT © LookAtFr3sn0
 ## Links
 - [GitHub Repository](https://github.com/LookAtFr3sn0/X3DH)
 - [NPM Package](https://www.npmjs.com/package/@lookatfr3sn0/x3dh)
-
-## Keywords
-x3dh, triple-diffie-hellman, encryption, cryptography, libsodium, key-exchange, e2ee, end-to-end-encryption, signal-protocol
