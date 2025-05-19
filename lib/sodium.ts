@@ -126,6 +126,24 @@ export class X3DH {
     return okm;
   }
 
+/**
+ * Generate an X25519 key pair.
+ * todo - Add support for X448
+ * @param {string} curve - The curve to use
+ * @throws {Error} If the curve is not supported or not implemented
+ * @returns {{ publicKey: Uint8Array, privateKey: Uint8Array }}
+ */
+  public async generateKeyPair(curve: 'x25519' | 'x448' = 'x25519') {
+    const sodium = await this.initSodium();
+    if (curve !== 'x25519') throw new Error('Only x25519 is supported for key generation at this time');
+    const keyPair = await sodium.crypto_box_keypair();
+    const publicKey = await sodium.crypto_box_publickey(keyPair);
+    const privateKey = await sodium.crypto_box_secretkey(keyPair);
+    return { publicKey, privateKey };
+  }
+
+  
+
   public getCurve(): 'x25519' | 'x448'   { return this.curve;  }
   public getHash():  'sha256' | 'sha512' { return this.hash;   }
   public getInfo():   string             { return this.info;   }
