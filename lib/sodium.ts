@@ -1,15 +1,15 @@
 import pkg from 'sodium-plus';
-const { SodiumPlus, CryptographyKey } = pkg;
+const { SodiumPlus, CryptographyKey, X25519PublicKey } = pkg;
 import { createHmac } from 'crypto';
 
 let sodium;
 
 export class X3DH {
-  private curve: 'x25519' | 'x448';
+  private curve: 'x25519';
   private hash: 'sha256' | 'sha512';
   private info: string;
 
-  constructor(curve: 'x25519' | 'x448' = 'x25519', hash: 'sha256' | 'sha512' = 'sha512', info: string = 'MyProtocol') {
+  constructor(curve: 'x25519' = 'x25519', hash: 'sha256' | 'sha512' = 'sha512', info: string = 'MyProtocol') {
     this.curve  = curve;
     this.hash   = hash;
     this.info   = info;
@@ -128,17 +128,19 @@ export class X3DH {
 
 /**
  * Generate an X25519 key pair.
- * todo - Add support for X448
  * @param {string} curve - The curve to use
  * @throws {Error} If the curve is not supported or not implemented
  * @returns {{ publicKey: Uint8Array, privateKey: Uint8Array }}
  */
-  public async generateKeyPair(curve: 'x25519' | 'x448' = 'x25519') {
+  public async generateKeyPair(curve: 'x25519' = 'x25519') {
     const sodium = await this.initSodium();
     if (curve !== 'x25519') throw new Error('Only x25519 is supported for key generation at this time');
     const keyPair = await sodium.crypto_box_keypair();
-    const publicKey = await sodium.crypto_box_publickey(keyPair);
-    const privateKey = await sodium.crypto_box_secretkey(keyPair);
+    const publicKeyObj = await sodium.crypto_box_publickey(keyPair);
+    const privateKeyObj = await sodium.crypto_box_secretkey(keyPair);
+    // Convert to Buffer for compatibility
+    const publicKey = publicKeyObj.getBuffer ? publicKeyObj.getBuffer() : Buffer.from(publicKeyObj);
+    const privateKey = privateKeyObj.getBuffer ? privateKeyObj.getBuffer() : Buffer.from(privateKeyObj);
     return { publicKey, privateKey };
   }
 
@@ -155,8 +157,66 @@ export class X3DH {
     }
     return keyRing;
   }
-  
-  public getCurve(): 'x25519' | 'x448'   { return this.curve;  }
-  public getHash():  'sha256' | 'sha512' { return this.hash;   }
-  public getInfo():   string             { return this.info;   }
+
+  /**
+   * Hash public key
+   * @param {Uint8Array[]} publicKeys - Array of public keys to hash
+   * @returns {Promise<Uint8Array>} - The hash of the public keys
+   */
+  public async hashPublicKeys(publicKeys: Uint8Array[]): Promise<Uint8Array> {
+    const sodium = await this.initSodium();
+    if (!Array.isArray(publicKeys)) publicKeys = [publicKeys];
+    const hashState = await sodium.crypto_generichash_init();
+    const length = new Uint8Array([
+      (publicKeys.length >>> 24) & 0xFF,
+      (publicKeys.length >>> 16) & 0xFF,
+      (publicKeys.length >>> 8) & 0xFF,
+      publicKeys.length & 0xFF
+    ]);
+    await sodium.crypto_generichash_update(hashState, length);
+    for (const publicKey of publicKeys) {
+      await sodium.crypto_generichash_update(hashState, publicKey);
+    }
+    const finalHash = await sodium.crypto_generichash_final(hashState, 32);
+    return finalHash;
+  }
+
+  /**
+   * Sign a key ring with a private key.
+   * @param {Uint8Array} privateKey - The private key to sign with
+   * @param {Array<Uint8Array>} keyRing - The key ring to sign
+   * @returns {Promise<Uint8Array>} - The signature of the key ring
+   */
+  public async signKeyRing(privateKey: Uint8Array, keyRing: Array<Uint8Array>): Promise<Uint8Array> {
+    const sodium = await this.initSodium();
+    const signature = await sodium.crypto_sign_detached(
+      await this.hashPublicKeys(keyRing),
+      new CryptographyKey(Buffer.from(privateKey))
+    )
+    return signature;
+  }
+
+  /**
+   * Generate n signed prekey
+   * @param {Uint8Array} privateKey - The private key to sign with
+   * @param {number} [count=50] - The number of signed prekeys to generate
+   * @returns {Promise<{ signature: string, preKeys: string[] }>}
+   */
+  public async generatePreKeys(privateKey: Uint8Array, count: number = 50): Promise<{ signature: string, preKeys: string[] }> {
+    const sodium = await this.initSodium();
+    let keyRing = await this.generateKeyRing(count);
+    const publicKeys = keyRing.map(key => key.publicKey);
+    const signature = await this.signKeyRing(privateKey, publicKeys);
+
+    let preKeys = [];
+    for (let publicKey of publicKeys) {
+      preKeys.push(Buffer.from(publicKey).toString('base64'));
+    };
+
+    return { signature: Buffer.from(signature).toString('base64'), preKeys }
+  }
+
+  public getCurve(): 'x25519'            { return this.curve; }
+  public getHash():  'sha256' | 'sha512' { return this.hash;  }
+  public getInfo():   string             { return this.info;  }
 }
