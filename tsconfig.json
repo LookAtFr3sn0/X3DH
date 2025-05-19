@@ -5,5 +5,9 @@
     "moduleResolution": "node16",
     "declaration": true,
     "outDir": "./dist",
-  }
+    "allowImportingTsExtensions": true,
+    "emitDeclarationOnly": true,
+    "esModuleInterop": true
+  },
+  "exclude": ["tests", "node_modules", "dist"]
 }
