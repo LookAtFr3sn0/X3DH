@@ -142,8 +142,20 @@ export class X3DH {
     return { publicKey, privateKey };
   }
 
+  /**
+   * Generate multiple key pairs.
+   * @param {number} [count=50] - The number of key pairs to generate
+   * @returns {Promise<Array<{ publicKey: Uint8Array, privateKey: Uint8Array }>>}
+   */
+  public async generateKeyRing(count: number = 50): Promise<Array<{ publicKey: Uint8Array, privateKey: Uint8Array }>> {
+    let keyRing = [];
+    for (let i = 0; i < count; i++) {
+      const keyPair = await this.generateKeyPair(this.curve);
+      keyRing.push(keyPair);
+    }
+    return keyRing;
+  }
   
-
   public getCurve(): 'x25519' | 'x448'   { return this.curve;  }
   public getHash():  'sha256' | 'sha512' { return this.hash;   }
   public getInfo():   string             { return this.info;   }
