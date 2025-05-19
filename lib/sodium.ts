@@ -216,6 +216,7 @@ export class X3DH {
     return { signature: Buffer.from(signature).toString('base64'), preKeys }
   }
 
+
   public getCurve(): 'x25519'            { return this.curve; }
   public getHash():  'sha256' | 'sha512' { return this.hash;  }
   public getInfo():   string             { return this.info;  }
