@@ -1,5 +1,5 @@
 import pkg from 'sodium-plus';
-const { SodiumPlus, CryptographyKey, X25519PublicKey } = pkg;
+const { SodiumPlus, CryptographyKey, X25519PublicKey, X25519SecretKey } = pkg;
 import { createHmac } from 'crypto';
 
 let sodium;
@@ -130,17 +130,14 @@ export class X3DH {
  * Generate an X25519 key pair.
  * @param {string} curve - The curve to use
  * @throws {Error} If the curve is not supported or not implemented
- * @returns {{ publicKey: Uint8Array, privateKey: Uint8Array }}
+ * @returns {{ publicKey: X25519PublicKey, privateKey: X25519SecretKey }}
  */
   public async generateKeyPair(curve: 'x25519' = 'x25519') {
     const sodium = await this.initSodium();
     if (curve !== 'x25519') throw new Error('Only x25519 is supported for key generation at this time');
     const keyPair = await sodium.crypto_box_keypair();
-    const publicKeyObj = await sodium.crypto_box_publickey(keyPair);
-    const privateKeyObj = await sodium.crypto_box_secretkey(keyPair);
-    // Convert to Buffer for compatibility
-    const publicKey = publicKeyObj.getBuffer ? publicKeyObj.getBuffer() : Buffer.from(publicKeyObj);
-    const privateKey = privateKeyObj.getBuffer ? privateKeyObj.getBuffer() : Buffer.from(privateKeyObj);
+    const publicKey = await sodium.crypto_box_publickey(keyPair);
+    const privateKey = await sodium.crypto_box_secretkey(keyPair);
     return { publicKey, privateKey };
   }
 
@@ -175,7 +172,7 @@ export class X3DH {
     ]);
     await sodium.crypto_generichash_update(hashState, length);
     for (const publicKey of publicKeys) {
-      await sodium.crypto_generichash_update(hashState, publicKey);
+      await sodium.crypto_generichash_update(hashState, Buffer.from(publicKey));
     }
     const finalHash = await sodium.crypto_generichash_final(hashState, 32);
     return finalHash;

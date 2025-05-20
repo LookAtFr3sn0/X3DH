@@ -1,0 +1,42 @@
+import { X25519PublicKey, X25519SecretKey } from 'sodium-plus';
+import { X3DH } from '../index.ts';
+
+describe('asymmetric', () => {
+  let x3dh;
+
+  beforeAll(() => {
+    x3dh = new X3DH('x25519', 'sha512', 'MyProtocol');
+  });
+
+  it('should generate unique key pairs', async () => {
+    const keyPair1 = await x3dh.generateKeyPair();
+    const keyPair2 = await x3dh.generateKeyPair();
+    const { publicKey: publicKey1, privateKey: privateKey1 } = keyPair1;
+    const { publicKey: publicKey2, privateKey: privateKey2 } = keyPair2;
+    const publicKey1Buffer = await publicKey1.getBuffer();
+    const publicKey2Buffer = await publicKey2.getBuffer();
+    const privateKey1Buffer = await privateKey1.getBuffer();
+    const privateKey2Buffer = await privateKey2.getBuffer();
+    expect(publicKey1Buffer).not.toEqual(publicKey2Buffer);
+    expect(privateKey1Buffer).not.toEqual(privateKey2Buffer);
+  });
+
+  it('should generate a valid key pair', async () => {
+    const keyPair = await x3dh.generateKeyPair();
+    const { publicKey, privateKey } = keyPair;
+    expect(publicKey).toBeInstanceOf(X25519PublicKey);
+    expect(privateKey).toBeInstanceOf(X25519SecretKey);
+    expect(publicKey).not.toEqual(privateKey);
+  });
+
+  it('should generate a key ring', async () => {
+    const keyRing = await x3dh.generateKeyRing(5);
+    expect(keyRing).toBeInstanceOf(Array<{ publicKey: Uint8Array, privateKey: Uint8Array }>);
+    expect(keyRing.length).toBe(5);
+    keyRing.forEach((keyPair) => {
+      expect(keyPair.publicKey).toBeInstanceOf(X25519PublicKey);
+      expect(keyPair.privateKey).toBeInstanceOf(X25519SecretKey);
+      expect(keyPair.publicKey).not.toEqual(keyPair.privateKey);
+    });
+  });
+});

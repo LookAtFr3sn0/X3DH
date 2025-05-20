@@ -1,20 +1,10 @@
 import { X3DH } from '../index.ts';
 
-describe('X3DH', () => {
+describe('symmetric', () => {
   let x3dh;
 
   beforeAll(() => {
     x3dh = new X3DH('x25519', 'sha512', 'MyProtocol');
-  });
-
-  it('should generate a valid key pair', async () => {
-    const keyPair = await x3dh.generateKeyPair();
-    const { publicKey, privateKey } = keyPair;
-    expect(publicKey).toBeInstanceOf(Uint8Array);
-    expect(privateKey).toBeInstanceOf(Uint8Array);
-    expect(publicKey.length).toBe(32);
-    expect(privateKey.length).toBe(32);
-    expect(publicKey).not.toEqual(privateKey);
   });
 
   it('should encrypt and decrypt a message', async () => {
@@ -56,13 +46,6 @@ describe('X3DH', () => {
     expect(encrypted1).not.toBe(encrypted2);
   });
 
-  it('should generate unique key pairs', async () => {
-    const keyPair1 = await x3dh.generateKeyPair();
-    const keyPair2 = await x3dh.generateKeyPair();
-    expect(keyPair1.publicKey).not.toEqual(keyPair2.publicKey);
-    expect(keyPair1.privateKey).not.toEqual(keyPair2.privateKey);
-  });
-
   it('should encrypt and decrypt an empty string', async () => {
     const key = crypto.getRandomValues(new Uint8Array(32));
     const message = '';
@@ -70,6 +53,4 @@ describe('X3DH', () => {
     const decrypted = await x3dh.decrypt(encrypted, key);
     expect(decrypted).toBe(message);
   });
-
-  
 });
