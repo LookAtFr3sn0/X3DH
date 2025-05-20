@@ -46,6 +46,4 @@ describe('asymmetric', () => {
     expect(hash).toBeInstanceOf(Uint8Array);
     expect(hash.length).toBe(64);
   });
-
-  it('should hash a key pair', async () => {
 });

@@ -160,11 +160,11 @@ export class X3DH {
   /**
    * Hash public key
    * @param {Uint8Array[]} publicKeys - Array of public keys to hash
-   * @throws {Error} If the hash function is not supported
    * @returns {Promise<Uint8Array>} - The hash of the public keys
    */
   public async hashPublicKeys(publicKeys: Uint8Array[]): Promise<Uint8Array> {
     const sodium = await this.initSodium();
+    const hashLength = this.hash === 'sha512' ? 64 : 32;
     if (!Array.isArray(publicKeys)) publicKeys = [publicKeys];
     const hashState = await sodium.crypto_generichash_init();
     const length = new Uint8Array([
@@ -173,22 +173,12 @@ export class X3DH {
       (publicKeys.length >>> 8) & 0xFF,
       publicKeys.length & 0xFF
     ]);
-    if (this.hash === 'sha256') {
-      await sodium.crypto_hash_sha256_update(hashState, length);
-      for (const publicKey of publicKeys) {
-        await sodium.crypto_hash_sha256_update(hashState, Buffer.from(publicKey));
-      }
-      const finalHash = await sodium.crypto_hash_sha256_final(hashState, 32);
-      return finalHash;
-    } else if (this.hash === 'sha512') {
-      await sodium.crypto_hash_sha512_update(hashState, length);
-      for (const publicKey of publicKeys) {
-        await sodium.crypto_hash_sha512_update(hashState, Buffer.from(publicKey));
-      }
-      const finalHash = await sodium.crypto_hash_sha512_final(hashState, 64);
-      return finalHash;
+    await sodium.crypto_generichash_update(hashState, length);
+    for (const publicKey of publicKeys) {
+      await sodium.crypto_generichash_update(hashState, Buffer.from(publicKey));
     }
-    throw new Error('Unsupported hash function');
+    const finalHash = await sodium.crypto_generichash_final(hashState, hashLength);
+    return finalHash;
   }
 
   /**

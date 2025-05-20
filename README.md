@@ -27,6 +27,10 @@ import { X3DH } from '@lookatfr3sn0/x3dh';
 const { X3DH } = require('@lookatfr3sn0/x3dh');
 ```
 
+## Important Note on Hash Algorithm
+
+Due to limitations of the underlying sodium-plus library, the `sha256` and `sha512` options for the hash algorithm actually use BLAKE2b under the hood. This means that while the API allows you to select `sha256` or `sha512`, the cryptographic operations are performed using BLAKE2b with output lengths matching those of SHA-256 (32 bytes) or SHA-512 (64 bytes).
+
 ## License
 
 MIT © LookAtFr3sn0
