@@ -1,4 +1,4 @@
-import { X25519PublicKey, X25519SecretKey } from 'sodium-plus';
+import { Ed25519SecretKey, X25519PublicKey, X25519SecretKey } from 'sodium-plus';
 import { X3DH } from '../index.ts';
 
 describe('asymmetric', () => {
@@ -39,4 +39,13 @@ describe('asymmetric', () => {
       expect(keyPair.publicKey).not.toEqual(keyPair.privateKey);
     });
   });
+
+  it('should hash a key ring', async () => {
+    const keyRing = await x3dh.generateKeyRing(5);
+    const hash = await x3dh.hashPublicKeys([keyRing]);
+    expect(hash).toBeInstanceOf(Uint8Array);
+    expect(hash.length).toBe(64);
+  });
+
+  it('should hash a key pair', async () => {
 });

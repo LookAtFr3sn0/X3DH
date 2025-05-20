@@ -1,6 +1,8 @@
 import pkg from 'sodium-plus';
-const { SodiumPlus, CryptographyKey, X25519PublicKey, X25519SecretKey } = pkg;
+const { SodiumPlus, CryptographyKey, X25519PublicKey, X25519SecretKey, Ed25519PublicKey, Ed25519SecretKey } = pkg;
 import { createHmac } from 'crypto';
+
+type Ed25519SecretKey = InstanceType<typeof Ed25519SecretKey>;
 
 let sodium;
 
@@ -158,6 +160,7 @@ export class X3DH {
   /**
    * Hash public key
    * @param {Uint8Array[]} publicKeys - Array of public keys to hash
+   * @throws {Error} If the hash function is not supported
    * @returns {Promise<Uint8Array>} - The hash of the public keys
    */
   public async hashPublicKeys(publicKeys: Uint8Array[]): Promise<Uint8Array> {
@@ -170,26 +173,36 @@ export class X3DH {
       (publicKeys.length >>> 8) & 0xFF,
       publicKeys.length & 0xFF
     ]);
-    await sodium.crypto_generichash_update(hashState, length);
-    for (const publicKey of publicKeys) {
-      await sodium.crypto_generichash_update(hashState, Buffer.from(publicKey));
+    if (this.hash === 'sha256') {
+      await sodium.crypto_hash_sha256_update(hashState, length);
+      for (const publicKey of publicKeys) {
+        await sodium.crypto_hash_sha256_update(hashState, Buffer.from(publicKey));
+      }
+      const finalHash = await sodium.crypto_hash_sha256_final(hashState, 32);
+      return finalHash;
+    } else if (this.hash === 'sha512') {
+      await sodium.crypto_hash_sha512_update(hashState, length);
+      for (const publicKey of publicKeys) {
+        await sodium.crypto_hash_sha512_update(hashState, Buffer.from(publicKey));
+      }
+      const finalHash = await sodium.crypto_hash_sha512_final(hashState, 64);
+      return finalHash;
     }
-    const finalHash = await sodium.crypto_generichash_final(hashState, 32);
-    return finalHash;
+    throw new Error('Unsupported hash function');
   }
 
   /**
    * Sign a key ring with a private key.
-   * @param {Uint8Array} privateKey - The private key to sign with
+   * @param {Ed22519SecretKey} privateKey - The private key to sign with
    * @param {Array<Uint8Array>} keyRing - The key ring to sign
    * @returns {Promise<Uint8Array>} - The signature of the key ring
    */
-  public async signKeyRing(privateKey: Uint8Array, keyRing: Array<Uint8Array>): Promise<Uint8Array> {
+  public async signKeyRing(privateKey: Ed25519SecretKey, keyRing: Array<Uint8Array>): Promise<Uint8Array> {
     const sodium = await this.initSodium();
     const signature = await sodium.crypto_sign_detached(
       await this.hashPublicKeys(keyRing),
-      new CryptographyKey(Buffer.from(privateKey))
-    )
+      privateKey
+    );
     return signature;
   }
 
@@ -197,20 +210,21 @@ export class X3DH {
    * Generate n signed prekey
    * @param {Uint8Array} privateKey - The private key to sign with
    * @param {number} [count=50] - The number of signed prekeys to generate
-   * @returns {Promise<{ signature: string, preKeys: string[] }>}
+   * @returns {Promise<{ signature: Uint8Array, preKeys: Uint8Array[] }>}
    */
-  public async generatePreKeys(privateKey: Uint8Array, count: number = 50): Promise<{ signature: string, preKeys: string[] }> {
+  public async generatePreKeys(privateKey: Uint8Array, count: number = 50): Promise<{ signature: Uint8Array, preKeys: Uint8Array[] }> {
     const sodium = await this.initSodium();
     let keyRing = await this.generateKeyRing(count);
     const publicKeys = keyRing.map(key => key.publicKey);
-    const signature = await this.signKeyRing(privateKey, publicKeys);
+    const edSecretKey = new Ed25519SecretKey(Buffer.from(privateKey));
+    const signature = await this.signKeyRing(edSecretKey, publicKeys);
 
     let preKeys = [];
     for (let publicKey of publicKeys) {
       preKeys.push(Buffer.from(publicKey).toString('base64'));
     };
 
-    return { signature: Buffer.from(signature).toString('base64'), preKeys }
+    return { signature, preKeys }
   }
 
   /**
