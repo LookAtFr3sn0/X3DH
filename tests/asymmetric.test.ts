@@ -42,8 +42,32 @@ describe('asymmetric', () => {
 
   it('should hash a key ring', async () => {
     const keyRing = await x3dh.generateKeyRing(5);
-    const hash = await x3dh.hashPublicKeys([keyRing]);
+    const keyRingBuffers = await Promise.all(keyRing.map(async kp => await kp.publicKey.getBuffer()));
+    const hash = await x3dh.hashPublicKeys(keyRingBuffers);
     expect(hash).toBeInstanceOf(Uint8Array);
     expect(hash.length).toBe(64);
+  });
+
+  it('should generate an empty key ring if count is 0', async () => {
+    const keyRing = await x3dh.generateKeyRing(0);
+    expect(Array.isArray(keyRing)).toBe(true);
+    expect(keyRing.length).toBe(0);
+  });
+
+  it('should hash key rings deterministically', async () => {
+    const keyRing = await x3dh.generateKeyRing(5);
+    const publicKeys = await Promise.all(keyRing.map(async kp => await kp.publicKey.getBuffer()));
+    const hash1 = await x3dh.hashPublicKeys(publicKeys);
+    const hash2 = await x3dh.hashPublicKeys(publicKeys);
+    expect(hash1).toEqual(hash2);
+  });
+
+  it('should sign a key ring', async () => {
+    const keyRing = await x3dh.generateKeyRing(5);
+    const publicKeys = await Promise.all(keyRing.map(async kp => await kp.publicKey.getBuffer()));
+    const privateKeys = await Promise.all(keyRing.map(async kp => await kp.privateKey.getBuffer()));
+    const signature = await x3dh.signKeyRing(privateKeys[0], publicKeys);
+    expect(signature).toBeInstanceOf(Uint8Array);
+    expect(signature.length).toBe(64);
   });
 });
