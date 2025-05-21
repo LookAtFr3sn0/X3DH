@@ -12,6 +12,4 @@ describe('x3dh', () => {
     expect(x3dh.getHash()).toBe('sha512');
     expect(x3dh.getInfo()).toBe('MyProtocol');
   });
-
-  
 });

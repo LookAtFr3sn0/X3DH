@@ -10,15 +10,13 @@ type CryptographyKey = InstanceType<typeof CryptographyKey>;
 
 let sodium;
 
-export class X3DH {
-  private curve: 'x25519';
+export class Symmetric {
   private hash: 'sha256' | 'sha512';
   private info: string;
 
-  constructor(curve: 'x25519' = 'x25519', hash: 'sha256' | 'sha512' = 'sha512', info: string = 'MyProtocol') {
-    this.curve  = curve;
-    this.hash   = hash;
-    this.info   = info;
+  constructor(hash: 'sha256' | 'sha512' = 'sha512', info: string = 'MyProtocol') {
+    this.hash = hash;
+    this.info = info;
   }
 
   private async initSodium() {
@@ -32,35 +30,26 @@ export class X3DH {
    * @param {Uint8Array} nonce
    * @returns {Promise<{ encryptionKey: CryptographyKey, commitment: Uint8Array }>}
    */
-  public async deriveKeys(key: Uint8Array, nonce: Uint8Array): Promise<{ encryptionKey: Uint8Array, commitment: Uint8Array }> {
+  public async deriveKeys(key: CryptographyKey, nonce: Uint8Array): Promise<{ encryptionKey: CryptographyKey, commitment: Uint8Array }> {
     const sodium = await this.initSodium();
-    const cryptoKey = new CryptographyKey(Buffer.from(key));
-    const encryptionKey = await sodium.crypto_generichash(
-      Buffer.from(nonce),
-      cryptoKey,
-      32
-    );
+    const encryptionKeyBuf = await sodium.crypto_generichash(Buffer.from(nonce), key, 32);
+    const encryptionKey = new CryptographyKey(encryptionKeyBuf);
     const commitmentPrefix = Buffer.from(this.info + 'commitment', 'utf8');
-    const commitment = await sodium.crypto_generichash(
-      Buffer.concat([commitmentPrefix, nonce]),
-      cryptoKey,
-      32
-    );
+    const commitment = await sodium.crypto_generichash(Buffer.concat([commitmentPrefix, nonce]), key, 32);
     return { encryptionKey, commitment };
   }
 
   /**
    * @param {string} message - The plaintext message to encrypt
-   * @param {Uint8Array} key - The key to use for encryption
+   * @param {CryptographyKey} key - The key to use for encryption
    * @param {string} [associatedData] - Optional associated data
    * @returns {string}
    */
-  public async encrypt(message: string, key: Uint8Array, associatedData?: string): Promise<string> {
+  public async encrypt(message: string, key: CryptographyKey, associatedData?: string): Promise<string> {
     const sodium = await this.initSodium();
     const nonceBuf = await sodium.randombytes_buf(24); // 192 bits nonce
     const nonce = Buffer.from(nonceBuf).toString('base64');
     const header = JSON.stringify({
-      curve: this.curve,
       hash: this.hash,
       info: this.info,
       nonce: nonce,
@@ -72,7 +61,7 @@ export class X3DH {
     const ciphertext = await sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
       messageBuf,
       nonceBuf,
-      new CryptographyKey(Buffer.from(encryptionKey)),
+      encryptionKey,
       headerBuf
     );
     return JSON.stringify({
@@ -84,27 +73,26 @@ export class X3DH {
 
   /**
    * @param {string} encrypted - JSON string containing the encrypted message and header with optional associated data
-   * @param {Uint8Array} key - The key to use for decryption
+   * @param {CryptographyKey} key - The key to use for decryption
    * @throws {Error} If the header does not match the expected values
    * @throws {Error} If decryption fails
    * @returns {Promise<string>}
    */
-  public async decrypt(encrypted: string, key: Uint8Array): Promise<string> {
+  public async decrypt(encrypted: string, key: CryptographyKey): Promise<string> {
     const sodium = await this.initSodium();
     const parsed = JSON.parse(encrypted);
     const header = JSON.parse(parsed.header);
-    if (header.curve !== this.curve || header.hash !== this.hash || header.info !== this.info) throw new Error('Header mismatch');
+    if (header.hash !== this.hash || header.info !== this.info) throw new Error('Header mismatch');
     const ciphertextBuf = Buffer.from(parsed.ciphertext, 'base64');
-    const keyBuf = Buffer.from(key);
     const headerBuf = Buffer.from(parsed.header, 'utf8');
     const nonceBuf = Buffer.from(header.nonce, 'base64');
     const commitmentBuf = Buffer.from(parsed.commitment, 'base64');
-    const { encryptionKey, commitment } = await this.deriveKeys(keyBuf, nonceBuf);
+    const { encryptionKey, commitment } = await this.deriveKeys(key, nonceBuf);
     if (!(await sodium.sodium_memcmp(commitmentBuf, commitment))) throw new Error('Commitment mismatch');
     const plaintext = await sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
       ciphertextBuf,
       nonceBuf,
-      new CryptographyKey(Buffer.from(encryptionKey)),
+      encryptionKey,
       headerBuf
     );
     if (!plaintext) throw new Error('Decryption failed');
@@ -118,8 +106,6 @@ export class X3DH {
    * @returns {Promise<Uint8Array>}
    */
   public async hkdf(ikm: Uint8Array, salt?: Uint8Array): Promise<Uint8Array> {
-    const sodium = await this.initSodium();
-    // Determine hash output length and default salt
     const hashLen = this.hash === 'sha512' ? 64 : 32;
     if (!salt) salt = Buffer.alloc(hashLen);
     
@@ -131,7 +117,22 @@ export class X3DH {
       .digest();
     return okm;
   }
+}
 
+export class Asymmetric {
+  private curve: 'x25519';
+  private hash: 'sha256' | 'sha512';
+
+  constructor(curve: 'x25519' = 'x25519', hash: 'sha256' | 'sha512' = 'sha512') {
+    this.curve = curve;
+    this.hash = hash;
+  }
+
+  private async initSodium() {
+    if (!sodium) sodium = await SodiumPlus.auto();
+    return sodium;
+  }
+  
 /**
  * Generate an X25519 key pair.
  * @param {string} curve - The curve to use
@@ -242,6 +243,28 @@ export class X3DH {
     )
   }
 
+}
+
+export class X3DH {
+  private curve: 'x25519';
+  private hash: 'sha256' | 'sha512';
+  private info: string;
+  public symmetric: Symmetric;
+  public asymmetric: Asymmetric;
+
+  constructor(curve: 'x25519' = 'x25519', hash: 'sha256' | 'sha512' = 'sha512', info: string = 'MyProtocol') {
+    this.curve  = curve;
+    this.hash   = hash;
+    this.info   = info;
+    this.symmetric = new Symmetric(hash, info);
+    this.asymmetric = new Asymmetric(curve, hash);
+  }
+
+  private async initSodium() {
+    if (!sodium) sodium = await SodiumPlus.auto();
+    return sodium;
+  }
+
   /**
    * Begin a handshake with a remote party.
    * @param {Uint8Array} identityKey - The public key of the remote party
@@ -264,11 +287,11 @@ export class X3DH {
     const signature = Buffer.from(signedPreKey.signature);
     const prekey = new X25519PublicKey(Buffer.from(signedPreKey.preKey));
 
-    if (!(await this.verifyKeyRing(identity, signature, [prekey]))) {
+    if (!(await this.asymmetric.verifyKeyRing(identity, signature, [prekey]))) {
       throw new Error('Signature verification failed for the signed prekey');
     }
 
-    const ephemeralKeyPair = await this.generateKeyPair();
+    const ephemeralKeyPair = await this.asymmetric.generateKeyPair();
     const ephemeralPublicKey = ephemeralKeyPair.publicKey;
     const ephemeralPrivateKey = ephemeralKeyPair.privateKey;
 
@@ -286,7 +309,7 @@ export class X3DH {
       SK = Buffer.concat([SK, DH4]);
       DH4.wipe();
     }
-    SK = Buffer.from(await this.hkdf(SK));
+    SK = Buffer.from(await this.symmetric.hkdf(SK));
     
     DH1.wipe();
     DH2.wipe();

@@ -9,8 +9,8 @@ describe('asymmetric', () => {
   });
 
   it('should generate unique key pairs', async () => {
-    const keyPair1 = await x3dh.generateKeyPair();
-    const keyPair2 = await x3dh.generateKeyPair();
+    const keyPair1 = await x3dh.asymmetric.generateKeyPair();
+    const keyPair2 = await x3dh.asymmetric.generateKeyPair();
     const { publicKey: publicKey1, privateKey: privateKey1 } = keyPair1;
     const { publicKey: publicKey2, privateKey: privateKey2 } = keyPair2;
     const publicKey1Buffer = await publicKey1.getBuffer();
@@ -22,7 +22,7 @@ describe('asymmetric', () => {
   });
 
   it('should generate a valid key pair', async () => {
-    const keyPair = await x3dh.generateKeyPair();
+    const keyPair = await x3dh.asymmetric.generateKeyPair();
     const { publicKey, privateKey } = keyPair;
     expect(publicKey).toBeInstanceOf(X25519PublicKey);
     expect(privateKey).toBeInstanceOf(X25519SecretKey);
@@ -30,7 +30,7 @@ describe('asymmetric', () => {
   });
 
   it('should generate a key ring', async () => {
-    const keyRing = await x3dh.generateKeyRing(5);
+    const keyRing = await x3dh.asymmetric.generateKeyRing(5);
     expect(keyRing).toBeInstanceOf(Array<{ publicKey: Uint8Array, privateKey: Uint8Array }>);
     expect(keyRing.length).toBe(5);
     keyRing.forEach((keyPair) => {
@@ -41,24 +41,24 @@ describe('asymmetric', () => {
   });
 
   it('should hash a key ring', async () => {
-    const keyRing = await x3dh.generateKeyRing(5);
+    const keyRing = await x3dh.asymmetric.generateKeyRing(5);
     const publicKeys = keyRing.map(kp => kp.publicKey);
-    const hash = await x3dh.hashPublicKeys(publicKeys);
+    const hash = await x3dh.asymmetric.hashPublicKeys(publicKeys);
     expect(hash).toBeInstanceOf(Uint8Array);
     expect(hash.length).toBe(64);
   });
 
   it('should generate an empty key ring if count is 0', async () => {
-    const keyRing = await x3dh.generateKeyRing(0);
+    const keyRing = await x3dh.asymmetric.generateKeyRing(0);
     expect(Array.isArray(keyRing)).toBe(true);
     expect(keyRing.length).toBe(0);
   });
 
   it('should hash key rings deterministically', async () => {
-    const keyRing = await x3dh.generateKeyRing(5);
+    const keyRing = await x3dh.asymmetric.generateKeyRing(5);
     const publicKeys = keyRing.map(kp => kp.publicKey);
-    const hash1 = await x3dh.hashPublicKeys(publicKeys);
-    const hash2 = await x3dh.hashPublicKeys(publicKeys);
+    const hash1 = await x3dh.asymmetric.hashPublicKeys(publicKeys);
+    const hash2 = await x3dh.asymmetric.hashPublicKeys(publicKeys);
     expect(hash1).toEqual(hash2);
   });
 
@@ -67,9 +67,9 @@ describe('asymmetric', () => {
     const edKeyPair = await sodium.crypto_sign_keypair();
     const edPrivateKey = await sodium.crypto_sign_secretkey(edKeyPair);
 
-    const keyRing = await x3dh.generateKeyRing(5);
+    const keyRing = await x3dh.asymmetric.generateKeyRing(5);
     const publicKeys = keyRing.map(kp => kp.publicKey);
-    const signature = await x3dh.signKeyRing(edPrivateKey, publicKeys);
+    const signature = await x3dh.asymmetric.signKeyRing(edPrivateKey, publicKeys);
 
     expect(signature).toBeInstanceOf(Uint8Array);
     expect(signature.length).toBe(64);
@@ -81,10 +81,10 @@ describe('asymmetric', () => {
     const edPublicKey = await sodium.crypto_sign_publickey(edKeyPair);
     const edPrivateKey = await sodium.crypto_sign_secretkey(edKeyPair);
 
-    const keyRing = await x3dh.generateKeyRing(5);
+    const keyRing = await x3dh.asymmetric.generateKeyRing(5);
     const publicKeys = keyRing.map(kp => kp.publicKey);
-    const signature = await x3dh.signKeyRing(edPrivateKey, publicKeys);
-    expect(await x3dh.verifyKeyRing(edPublicKey, signature, publicKeys)).toBe(true);
+    const signature = await x3dh.asymmetric.signKeyRing(edPrivateKey, publicKeys);
+    expect(await x3dh.asymmetric.verifyKeyRing(edPublicKey, signature, publicKeys)).toBe(true);
   });
 
   it('should fail to verify a signed key ring with an invalid public key', async () => {
@@ -93,26 +93,25 @@ describe('asymmetric', () => {
     const edPublicKey = await sodium.crypto_sign_publickey(edKeyPair);
     const edPrivateKey = await sodium.crypto_sign_secretkey(edKeyPair);
 
-    const keyRing = await x3dh.generateKeyRing(5);
+    const keyRing = await x3dh.asymmetric.generateKeyRing(5);
     const publicKeys = keyRing.map(kp => kp.publicKey);
-    const signature = await x3dh.signKeyRing(edPrivateKey, publicKeys);
+    const signature = await x3dh.asymmetric.signKeyRing(edPrivateKey, publicKeys);
     publicKeys[0] = new Uint8Array(32).fill(1);
 
-    await expect(x3dh.verifyKeyRing(edPublicKey, signature, publicKeys)).rejects.toThrow('All publicKeys must be X25519PublicKey instances');
+    await expect(x3dh.asymmetric.verifyKeyRing(edPublicKey, signature, publicKeys)).rejects.toThrow('All publicKeys must be X25519PublicKey instances');
   });
 
   it('should fail to verify a signed key ring with the wrong public key', async () => {
     const sodium = await import('sodium-plus').then(m => m.SodiumPlus.auto());
     const edKeyPair = await sodium.crypto_sign_keypair();
-    const edPublicKey = await sodium.crypto_sign_publickey(edKeyPair);
     const edPrivateKey = await sodium.crypto_sign_secretkey(edKeyPair);
-    const wrontKeyPair = await sodium.crypto_sign_keypair();
-    const wrongPublicKey = await sodium.crypto_sign_publickey(wrontKeyPair);
+    const wrongKeyPair = await sodium.crypto_sign_keypair();
+    const wrongPublicKey = await sodium.crypto_sign_publickey(wrongKeyPair);
 
-    const keyRing = await x3dh.generateKeyRing(5);
+    const keyRing = await x3dh.asymmetric.generateKeyRing(5);
     const publicKeys = keyRing.map(kp => kp.publicKey);
-    const signature = await x3dh.signKeyRing(edPrivateKey, publicKeys);
+    const signature = await x3dh.asymmetric.signKeyRing(edPrivateKey, publicKeys);
 
-    await expect(x3dh.verifyKeyRing(wrongPublicKey, signature, publicKeys)).resolves.toBe(false);
+    await expect(x3dh.asymmetric.verifyKeyRing(wrongPublicKey, signature, publicKeys)).resolves.toBe(false);
   });
 });
