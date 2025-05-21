@@ -1,1 +1,1 @@
-export { X3DH } from "./lib/sodium.js";
+export { X3DH } from "./lib/x3dh.ts";
