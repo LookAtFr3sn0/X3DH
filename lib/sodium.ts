@@ -138,12 +138,13 @@ export class X3DH {
  * @throws {Error} If the curve is not supported or not implemented
  * @returns {{ publicKey: X25519PublicKey, privateKey: X25519SecretKey }}
  */
-  public async generateKeyPair(curve: 'x25519' = 'x25519') {
+  public async generateKeyPair(): Promise<{ publicKey: X25519PublicKey, privateKey: X25519SecretKey }> {
     const sodium = await this.initSodium();
-    if (curve !== 'x25519') throw new Error('Only x25519 is supported for key generation at this time');
     const keyPair = await sodium.crypto_box_keypair();
-    const publicKey = await sodium.crypto_box_publickey(keyPair);
-    const privateKey = await sodium.crypto_box_secretkey(keyPair);
+    const rawPublicKey = await sodium.crypto_box_publickey(keyPair);
+    const rawPrivateKey = await sodium.crypto_box_secretkey(keyPair);
+    const publicKey = new X25519PublicKey(await rawPublicKey.getBuffer());
+    const privateKey = new X25519SecretKey(await rawPrivateKey.getBuffer());
     return { publicKey, privateKey };
   }
 
@@ -155,7 +156,7 @@ export class X3DH {
   public async generateKeyRing(count: number = 50): Promise<Array<{ publicKey: X25519PublicKey, privateKey: X25519SecretKey }>> {
     let keyRing = [];
     for (let i = 0; i < count; i++) {
-      const keyPair = await this.generateKeyPair(this.curve);
+      const keyPair = await this.generateKeyPair();
       keyRing.push(keyPair);
     }
     return keyRing;
@@ -163,10 +164,11 @@ export class X3DH {
 
   /**
    * Hash public key
-   * @param {Uint8Array[]} publicKeys - Array of public keys to hash
+   * @param {Array<X25519PublicKey>} publicKeys - Array of public keys to hash
+   * @throws {TypeError} If any of the public keys is not an instance of X25519PublicKey
    * @returns {Promise<Uint8Array>} - The hash of the public keys
    */
-  public async hashPublicKeys(publicKeys: Ed25519PublicKey[]): Promise<Uint8Array> {
+  public async hashPublicKeys(publicKeys: Array<X25519PublicKey>): Promise<Uint8Array> {
     const sodium = await this.initSodium();
     const hashLength = this.hash === 'sha512' ? 64 : 32;
     if (!Array.isArray(publicKeys)) publicKeys = [publicKeys];
@@ -179,7 +181,10 @@ export class X3DH {
     ]);
     await sodium.crypto_generichash_update(hashState, length);
     for (const publicKey of publicKeys) {
-      await sodium.crypto_generichash_update(hashState, publicKey);
+      if (typeof publicKey.getBuffer !== 'function') {
+        throw new TypeError('All publicKeys must be X25519PublicKey instances');
+      }
+      await sodium.crypto_generichash_update(hashState, await publicKey.getBuffer());
     }
     const finalHash = await sodium.crypto_generichash_final(hashState, hashLength);
     return finalHash;
@@ -188,10 +193,10 @@ export class X3DH {
   /**
    * Sign a key ring with a private key.
    * @param {Ed22519SecretKey} privateKey - The private key to sign with
-   * @param {Array<Uint8Array>} keyRing - The key ring to sign
+   * @param {Array<X25519PublicKey>} keyRing - The key ring to sign
    * @returns {Promise<Uint8Array>} - The signature of the key ring
    */
-  public async signKeyRing(privateKey: Ed25519SecretKey, keyRing: Array<Ed25519PublicKey>): Promise<Uint8Array> {
+  public async signKeyRing(privateKey: Ed25519SecretKey, keyRing: Array<X25519PublicKey>): Promise<Uint8Array> {
     const sodium = await this.initSodium();
     const signature = await sodium.crypto_sign_detached(
       await this.hashPublicKeys(keyRing),
@@ -209,9 +214,8 @@ export class X3DH {
   public async generatePreKeys(privateKey: Ed25519SecretKey, count: number = 50): Promise<{ signature: Uint8Array, preKeys: Uint8Array[] }> {
     const sodium = await this.initSodium();
     let keyRing = await this.generateKeyRing(count);
-    const publicKeys = keyRing.map(key => new Ed25519PublicKey(key.publicKey.getBuffer()));
-    const edSecretKey = new Ed25519SecretKey(privateKey.getBuffer());
-    const signature = await this.signKeyRing(edSecretKey, publicKeys);
+    const publicKeys = keyRing.map(key => key.publicKey);
+    const signature = await this.signKeyRing(privateKey, publicKeys);
 
     let preKeys = [];
     for (let publicKey of publicKeys) {
@@ -223,18 +227,17 @@ export class X3DH {
 
   /**
    * Verify a signed key ring
-   * @param {Uint8Array} publicKey - The public key to verify against
+   * @param {Ed25519PublicKey} publicKey - The public key to verify against
    * @param {Uint8Array} signature - The signature to verify
-   * @param {Array<Uint8Array>} keyRing - The key ring to verify
+   * @param {Array<X25519PublicKey>} keyRing - The key ring to verify
    * @returns {Promise<boolean>}
    */
-  public async verifyKeyRing(publicKey: Uint8Array, signature: Uint8Array, keyRing: Array<Uint8Array>): Promise<boolean> {
+  public async verifyKeyRing(publicKey: Ed25519PublicKey, signature: Uint8Array, keyRing: Array<X25519PublicKey>): Promise<boolean> {
     const sodium = await this.initSodium();
-    const publicKeys = keyRing.map(pk => new Ed25519PublicKey(Buffer.from(pk)));
 
     return sodium.crypto_sign_verify_detached(
-      await this.hashPublicKeys(publicKeys),
-      Buffer.from(publicKey),
+      await this.hashPublicKeys(keyRing),
+      publicKey,
       Buffer.from(signature)
     )
   }
@@ -257,15 +260,15 @@ export class X3DH {
     oneTimeKey?: Uint8Array
   ) {
     const sodium = await this.initSodium();
-    const identity = new X25519PublicKey(Buffer.from(identityKey));
+    const identity = new Ed25519PublicKey(Buffer.from(identityKey));
     const signature = Buffer.from(signedPreKey.signature);
     const prekey = new X25519PublicKey(Buffer.from(signedPreKey.preKey));
 
-    if (!(await this.verifyKeyRing(identityKey, signature, [prekey.getBuffer()]))) {
+    if (!(await this.verifyKeyRing(identity, signature, [prekey]))) {
       throw new Error('Signature verification failed for the signed prekey');
     }
 
-    const ephemeralKeyPair = await this.generateKeyPair(this.curve);
+    const ephemeralKeyPair = await this.generateKeyPair();
     const ephemeralPublicKey = ephemeralKeyPair.publicKey;
     const ephemeralPrivateKey = ephemeralKeyPair.privateKey;
 
@@ -288,7 +291,7 @@ export class X3DH {
     DH1.wipe();
     DH2.wipe();
     DH3.wipe();
-    ephemeralPrivateKey.wipe();
+    await sodium.sodium_memzero(await ephemeralPrivateKey.getBuffer());
     await sodium.sodium_memzero(senderKey.buffer);
 
     return {

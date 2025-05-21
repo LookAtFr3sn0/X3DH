@@ -1,4 +1,4 @@
-import { Ed25519SecretKey, X25519PublicKey, X25519SecretKey } from 'sodium-plus';
+import { Ed25519PublicKey, Ed25519SecretKey, X25519PublicKey, X25519SecretKey } from 'sodium-plus';
 import { X3DH } from '../index.ts';
 
 describe('asymmetric', () => {
@@ -42,8 +42,8 @@ describe('asymmetric', () => {
 
   it('should hash a key ring', async () => {
     const keyRing = await x3dh.generateKeyRing(5);
-    const keyRingBuffers = await Promise.all(keyRing.map(async kp => await kp.publicKey.getBuffer()));
-    const hash = await x3dh.hashPublicKeys(keyRingBuffers);
+    const publicKeys = keyRing.map(kp => kp.publicKey);
+    const hash = await x3dh.hashPublicKeys(publicKeys);
     expect(hash).toBeInstanceOf(Uint8Array);
     expect(hash.length).toBe(64);
   });
@@ -56,17 +56,23 @@ describe('asymmetric', () => {
 
   it('should hash key rings deterministically', async () => {
     const keyRing = await x3dh.generateKeyRing(5);
-    const publicKeys = await Promise.all(keyRing.map(async kp => await kp.publicKey.getBuffer()));
+    const publicKeys = keyRing.map(kp => kp.publicKey);
     const hash1 = await x3dh.hashPublicKeys(publicKeys);
     const hash2 = await x3dh.hashPublicKeys(publicKeys);
     expect(hash1).toEqual(hash2);
   });
 
   it('should sign a key ring', async () => {
+    const sodium = await import('sodium-plus').then(m => m.SodiumPlus.auto());
+    const edKeyPair = await sodium.crypto_sign_keypair();
+    const edPrivateKey = await sodium.crypto_sign_secretkey(edKeyPair);
+
     const keyRing = await x3dh.generateKeyRing(5);
-    const publicKeys = await Promise.all(keyRing.map(async kp => await kp.publicKey.getBuffer()));
-    const privateKeys = await Promise.all(keyRing.map(async kp => await kp.privateKey.getBuffer()));
-    const signature = await x3dh.signKeyRing(privateKeys[0], publicKeys);
+    const publicKeys = keyRing.map(kp => kp.publicKey);
+
+    // Sign with Ed25519SecretKey, pass X25519PublicKey[]
+    const signature = await x3dh.signKeyRing(edPrivateKey, publicKeys);
+
     expect(signature).toBeInstanceOf(Uint8Array);
     expect(signature.length).toBe(64);
   });
