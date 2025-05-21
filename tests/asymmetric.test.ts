@@ -69,11 +69,50 @@ describe('asymmetric', () => {
 
     const keyRing = await x3dh.generateKeyRing(5);
     const publicKeys = keyRing.map(kp => kp.publicKey);
-
-    // Sign with Ed25519SecretKey, pass X25519PublicKey[]
     const signature = await x3dh.signKeyRing(edPrivateKey, publicKeys);
 
     expect(signature).toBeInstanceOf(Uint8Array);
     expect(signature.length).toBe(64);
+  });
+
+  it('should verify a signed key ring', async () => {
+    const sodium = await import('sodium-plus').then(m => m.SodiumPlus.auto());
+    const edKeyPair = await sodium.crypto_sign_keypair();
+    const edPublicKey = await sodium.crypto_sign_publickey(edKeyPair);
+    const edPrivateKey = await sodium.crypto_sign_secretkey(edKeyPair);
+
+    const keyRing = await x3dh.generateKeyRing(5);
+    const publicKeys = keyRing.map(kp => kp.publicKey);
+    const signature = await x3dh.signKeyRing(edPrivateKey, publicKeys);
+    expect(await x3dh.verifyKeyRing(edPublicKey, signature, publicKeys)).toBe(true);
+  });
+
+  it('should fail to verify a signed key ring with an invalid public key', async () => {
+    const sodium = await import('sodium-plus').then(m => m.SodiumPlus.auto());
+    const edKeyPair = await sodium.crypto_sign_keypair();
+    const edPublicKey = await sodium.crypto_sign_publickey(edKeyPair);
+    const edPrivateKey = await sodium.crypto_sign_secretkey(edKeyPair);
+
+    const keyRing = await x3dh.generateKeyRing(5);
+    const publicKeys = keyRing.map(kp => kp.publicKey);
+    const signature = await x3dh.signKeyRing(edPrivateKey, publicKeys);
+    publicKeys[0] = new Uint8Array(32).fill(1);
+
+    await expect(x3dh.verifyKeyRing(edPublicKey, signature, publicKeys)).rejects.toThrow('All publicKeys must be X25519PublicKey instances');
+  });
+
+  it('should fail to verify a signed key ring with the wrong public key', async () => {
+    const sodium = await import('sodium-plus').then(m => m.SodiumPlus.auto());
+    const edKeyPair = await sodium.crypto_sign_keypair();
+    const edPublicKey = await sodium.crypto_sign_publickey(edKeyPair);
+    const edPrivateKey = await sodium.crypto_sign_secretkey(edKeyPair);
+    const wrontKeyPair = await sodium.crypto_sign_keypair();
+    const wrongPublicKey = await sodium.crypto_sign_publickey(wrontKeyPair);
+
+    const keyRing = await x3dh.generateKeyRing(5);
+    const publicKeys = keyRing.map(kp => kp.publicKey);
+    const signature = await x3dh.signKeyRing(edPrivateKey, publicKeys);
+
+    await expect(x3dh.verifyKeyRing(wrongPublicKey, signature, publicKeys)).resolves.toBe(false);
   });
 });
