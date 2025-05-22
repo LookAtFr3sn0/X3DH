@@ -210,20 +210,19 @@ export class Asymmetric {
    * Generate n signed prekey
    * @param {Ed25519SecretKey} privateKey - The private key to sign with
    * @param {number} [count=50] - The number of signed prekeys to generate
-   * @returns {Promise<{ signature: Uint8Array, preKeys: Uint8Array[] }>}
+   * @returns {Promise<{ keyRing: Array<{ publicKey: X25519PublicKey, privateKey: X25519SecretKey }>, signature: Uint8Array, preKeys: Uint8Array[] }>}
    */
-  public async generatePreKeys(privateKey: Ed25519SecretKey, count: number = 50): Promise<{ signature: Uint8Array, preKeys: Uint8Array[] }> {
-    const sodium = await this.initSodium();
+  public async generatePreKeys(privateKey: Ed25519SecretKey, count: number = 50): Promise<{ keyRing: Array<{ publicKey: X25519PublicKey, privateKey: X25519SecretKey }>, signature: Uint8Array, preKeys: Uint8Array[] }> {
     let keyRing = await this.generateKeyRing(count);
     const publicKeys = keyRing.map(key => key.publicKey);
     const signature = await this.signKeyRing(privateKey, publicKeys);
 
     let preKeys = [];
     for (let publicKey of publicKeys) {
-      preKeys.push(publicKey.getBuffer());
+      preKeys.push(publicKey);
     };
 
-    return { signature, preKeys }
+    return { keyRing, signature, preKeys };
   }
 
   /**

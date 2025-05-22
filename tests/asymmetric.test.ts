@@ -114,4 +114,16 @@ describe('asymmetric', () => {
 
     await expect(x3dh.asymmetric.verifyKeyRing(wrongPublicKey, signature, publicKeys)).resolves.toBe(false);
   });
+
+  it('should generate n signed prekeys', async () => {
+    const sodium = await import('sodium-plus').then(m => m.SodiumPlus.auto());
+    const edKeyPair = await sodium.crypto_sign_keypair();
+    const edPrivateKey = await sodium.crypto_sign_secretkey(edKeyPair);
+
+    const { signature, preKeys } = await x3dh.asymmetric.generatePreKeys(edPrivateKey, 5);
+    expect(signature).toBeInstanceOf(Uint8Array);
+    expect(signature.length).toBe(64);
+    expect(preKeys.length).toBe(5);
+    preKeys.forEach((preKey) => { expect(preKey).toBeInstanceOf(X25519PublicKey) });
+  });
 });
